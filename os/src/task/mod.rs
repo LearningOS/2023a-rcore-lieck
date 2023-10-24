@@ -14,9 +14,12 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use core::usize;
+
+use crate::config::{MAX_APP_NUM, self};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
+use crate::timer;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -54,6 +57,8 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_times : [0; config::MAX_SYSCALL_NUM],
+            running_time : 0,
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -72,6 +77,37 @@ lazy_static! {
 }
 
 impl TaskManager {
+    fn set_running_time(&self) {
+        let mut inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        for i in 0..MAX_APP_NUM {
+            inner.tasks[i].running_time = timer::get_time_ms();
+        }
+    }
+
+    fn get_running_time(&self) -> usize {
+        let inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].running_time
+    } 
+
+    fn get_task_status(&self) -> TaskStatus {
+        let inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_status
+    }
+
+    fn get_sys_call_count(&self) -> [u32; config::MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times
+    }
+
+    fn add_sys_call_count(&self, syscall_idd : usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times[syscall_idd] += 1;
+    }
+
     /// Run the first task in task list.
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
@@ -139,6 +175,7 @@ impl TaskManager {
 
 /// Run the first task in task list.
 pub fn run_first_task() {
+    set_running_time();
     TASK_MANAGER.run_first_task();
 }
 
@@ -169,3 +206,29 @@ pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
 }
+
+/// 增加系统调用计数
+pub fn add_sys_call_count(syscall_idd : usize) {
+    TASK_MANAGER.add_sys_call_count(syscall_idd)
+}
+
+/// 获取计数结构
+pub fn get_sys_call_count() -> [u32; config::MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_sys_call_count()
+}
+
+/// 获取任务状态
+pub fn get_task_status() -> TaskStatus {
+    TASK_MANAGER.get_task_status()
+}
+
+/// 获取任务总的运行时间
+pub fn get_running_time() -> usize {
+    TASK_MANAGER.get_running_time()
+}
+
+/// sb
+pub fn set_running_time() {
+    TASK_MANAGER.set_running_time()
+}
+
