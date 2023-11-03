@@ -23,6 +23,9 @@ use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
 pub use context::TaskContext;
+use crate::{config};
+use crate::timer::get_time_us;
+
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -71,6 +74,42 @@ lazy_static! {
 }
 
 impl TaskManager {
+    fn set_running_time(&self) {
+        let us = get_time_us();
+        let sec = us / 1_000_000;
+        let usec = us % 1_000_000;
+        let t = (sec & 0xffff) * 1000 + usec / 1000;
+
+        let mut inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        for i in 0..inner.tasks.len() {
+            inner.tasks[i].running_time = t;
+        }
+    }
+
+    fn get_running_time(&self) -> usize {
+        let inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].running_time
+    }
+
+    fn get_task_status(&self) -> TaskStatus {
+        let inner: core::cell::RefMut<'_, TaskManagerInner> = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].task_status
+    }
+
+    fn get_sys_call_count(&self) -> [u32; config::MAX_SYSCALL_NUM] {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times
+    }
+
+    fn add_sys_call_count(&self, syscall_idd : usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_times[syscall_idd] += 1;
+    }
+
     /// Run the first task in task list.
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
@@ -157,6 +196,7 @@ impl TaskManager {
 
 /// Run the first task in task list.
 pub fn run_first_task() {
+    set_running_time();
     TASK_MANAGER.run_first_task();
 }
 
@@ -201,4 +241,41 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+
+/// 获取 pcb
+pub fn get_curr_task() -> &'static mut TaskControlBlock {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let curr_idx = inner.current_task;
+
+    unsafe {
+        (&mut inner.tasks[curr_idx] as *mut TaskControlBlock).as_mut().unwrap()
+    }
+}
+
+
+/// 增加系统调用计数
+pub fn add_sys_call_count(syscall_idd : usize) {
+    TASK_MANAGER.add_sys_call_count(syscall_idd)
+}
+
+/// 获取计数结构
+pub fn get_sys_call_count() -> [u32; config::MAX_SYSCALL_NUM] {
+    TASK_MANAGER.get_sys_call_count()
+}
+
+/// 获取任务状态
+pub fn get_task_status() -> TaskStatus {
+    TASK_MANAGER.get_task_status()
+}
+
+/// 获取任务总的运行时间
+pub fn get_running_time() -> usize {
+    TASK_MANAGER.get_running_time()
+}
+
+/// sb
+pub fn set_running_time() {
+    TASK_MANAGER.set_running_time()
 }
