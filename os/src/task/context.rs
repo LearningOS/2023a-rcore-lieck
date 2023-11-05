@@ -1,4 +1,7 @@
 //! Implementation of [`TaskContext`]
+use alloc::string::String;
+use crate::loader::get_app_data_by_name;
+use crate::task::{current_task, exit_current_and_run_next};
 use crate::trap::trap_return;
 
 #[repr(C)]
@@ -29,4 +32,34 @@ impl TaskContext {
             s: [0; 12],
         }
     }
+
+    /// 11
+    pub fn goto_trap_exec(kstack_ptr: usize) -> Self {
+        Self {
+            ra: trap_exec as usize,
+            sp: kstack_ptr,
+            s: [0; 12],
+        }
+    }
+}
+
+/// 11
+fn trap_exec() {
+    let path : String;
+
+    {
+        let task = current_task().unwrap();
+        let path_temp = &task.inner_exclusive_access().cmd_path;
+        path = String::from(path_temp.as_str());
+    }
+
+    if let Some(data) = get_app_data_by_name(path.as_str()) {
+        let task = current_task().unwrap();
+        task.exec(data);
+        trap_return()
+    }
+
+    // kill
+    println!("trap_exec exec err, ptah : {}", path);
+    exit_current_and_run_next(1);
 }
