@@ -80,6 +80,12 @@ pub struct TaskControlBlockInner {
 
     /// stack running time of task
     pub running_time : usize,
+
+    /// pass
+    pub pass : isize,
+
+    /// stride
+    pub stride : isize
 }
 
 impl TaskControlBlockInner {
@@ -133,6 +139,8 @@ impl TaskControlBlock {
                     cmd_path : String::new(),
                     syscall_count: [0; config::MAX_SYSCALL_NUM],
                     running_time: get_running(),
+                    pass : get_default_pass(),
+                    stride : 0,
                 })
             },
         };
@@ -209,6 +217,8 @@ impl TaskControlBlock {
                     cmd_path : String::new(),
                     syscall_count: [0; config::MAX_SYSCALL_NUM],
                     running_time: get_running(),
+                    pass : get_default_pass(),
+                    stride : 0,
                 })
             },
         });
@@ -260,6 +270,8 @@ impl TaskControlBlock {
                     cmd_path : path,
                     syscall_count: [0; config::MAX_SYSCALL_NUM],
                     running_time: get_running(),
+                    pass : get_default_pass(),
+                    stride : 0,
                 })
             },
         });
@@ -329,4 +341,9 @@ fn get_running() -> usize {
     let usec = us % 1_000_000;
     let t = (sec & 0xffff) * 1000 + usec / 1000;
     t
+}
+
+fn get_default_pass() -> isize {
+    let p = 16;
+    0x7FFFFFFF / p
 }
