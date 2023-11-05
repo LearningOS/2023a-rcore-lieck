@@ -9,6 +9,8 @@ use crate::trap::{trap_handler, TrapContext};
 use alloc::sync::{Arc, Weak};
 use alloc::vec::Vec;
 use core::cell::RefMut;
+use crate::config;
+use crate::timer::get_time_us;
 
 /// Task control block structure
 ///
@@ -71,7 +73,13 @@ pub struct TaskControlBlockInner {
     pub program_brk: usize,
 
     /// path
-    pub cmd_path : String
+    pub cmd_path : String,
+
+    /// The numbers of syscall called by task
+    pub syscall_count: [u32; config::MAX_SYSCALL_NUM],
+
+    /// stack running time of task
+    pub running_time : usize,
 }
 
 impl TaskControlBlockInner {
@@ -122,7 +130,9 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
-                    cmd_path : String::new()
+                    cmd_path : String::new(),
+                    syscall_count: [0; config::MAX_SYSCALL_NUM],
+                    running_time: get_running(),
                 })
             },
         };
@@ -196,7 +206,9 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
-                    cmd_path : String::new()
+                    cmd_path : String::new(),
+                    syscall_count: [0; config::MAX_SYSCALL_NUM],
+                    running_time: get_running(),
                 })
             },
         });
@@ -245,7 +257,9 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
-                    cmd_path : path
+                    cmd_path : path,
+                    syscall_count: [0; config::MAX_SYSCALL_NUM],
+                    running_time: get_running(),
                 })
             },
         });
@@ -307,4 +321,12 @@ pub enum TaskStatus {
     Running,
     /// exited
     Zombie,
+}
+
+fn get_running() -> usize {
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+    let t = (sec & 0xffff) * 1000 + usec / 1000;
+    t
 }

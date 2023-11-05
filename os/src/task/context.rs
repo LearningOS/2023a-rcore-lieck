@@ -1,5 +1,6 @@
 //! Implementation of [`TaskContext`]
 use alloc::string::String;
+use alloc::sync::Arc;
 use crate::loader::get_app_data_by_name;
 use crate::task::{current_task, exit_current_and_run_next};
 use crate::trap::trap_return;
@@ -56,10 +57,11 @@ fn trap_exec() {
     if let Some(data) = get_app_data_by_name(path.as_str()) {
         let task = current_task().unwrap();
         task.exec(data);
-        trap_return()
+        assert_eq!(Arc::strong_count(&task), 3);
+        trap_return();
+    } else {
+        // kill
+        println!("trap_exec exec err, ptah : {}", path);
+        exit_current_and_run_next(-1);
     }
-
-    // kill
-    println!("trap_exec exec err, ptah : {}", path);
-    exit_current_and_run_next(1);
 }

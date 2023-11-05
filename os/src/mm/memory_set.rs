@@ -30,6 +30,15 @@ lazy_static! {
     pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> =
         Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
 }
+
+
+#[derive(Debug)]
+pub enum MemoryError {
+    FrameAllocErr,
+    MmapRangeErr,
+    MmapInvalidErr
+}
+
 /// address space
 pub struct MemorySet {
     page_table: PageTable,
@@ -37,6 +46,56 @@ pub struct MemorySet {
 }
 
 impl MemorySet {
+
+    /// mmap allocate
+    pub fn mmap_allocate_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) -> Result<(), MemoryError> {
+
+        for item in &self.areas {
+            let start_va: VirtPageNum = start_va.floor();
+            let end_va: VirtPageNum = end_va.ceil();
+
+            let check_start = item.vpn_range.get_start();
+            let check_end = item.vpn_range.get_end();
+
+            if start_va >= check_end || end_va <= check_start {
+                continue
+            }
+            return Err(MemoryError::MmapRangeErr);
+        }
+
+        let area = MapArea::new(start_va, end_va, MapType::Framed, permission);
+        self.push(area, None);
+        Ok(())
+    }
+
+    /// 6
+    #[deny(unused_unsafe)]
+    pub fn unmap_free_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+    ) -> Result<(), MemoryError> {
+        let start_vpn: VirtPageNum = start_va.floor();
+        let end_vpn: VirtPageNum = end_va.ceil();
+
+        for idx in 0..self.areas.len() {
+            let range = self.areas[idx].vpn_range;
+            if range.get_start() == start_vpn && range.get_end() == end_vpn {
+                println!("unmap_free_area : {:?}", start_vpn);
+                self.areas[idx].unmap(&mut self.page_table);
+                self.areas.remove(idx);
+                return Ok(());
+            }
+        }
+
+        Err(MemoryError::MmapInvalidErr)
+    }
+
     /// Create a new empty `MemorySet`.
     pub fn new_bare() -> Self {
         Self {
